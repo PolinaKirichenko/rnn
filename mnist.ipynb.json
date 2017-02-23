@@ -1,0 +1,1400 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 64,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "import numpy as np\n",
+    "import numpy.random as rnd\n",
+    "import theano\n",
+    "import theano.tensor as T\n",
+    "import lasagne\n",
+    "import time\n",
+    "import gzip\n",
+    "import matplotlib.pyplot as plt\n",
+    "%matplotlib inline"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 37,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "#print(theano.config)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "def load_mnist_images(filename):\n",
+    "    # Read the inputs in Yann LeCun's binary format.\n",
+    "    with gzip.open(filename, 'rb') as f:\n",
+    "        data = np.frombuffer(f.read(), dtype=np.uint8, offset=16)\n",
+    "    # The inputs are vectors now, we reshape them to monochrome 2D images,\n",
+    "    # following the shape convention: (examples, channels, rows, columns)\n",
+    "    data = data.reshape(-1, 28, 28)\n",
+    "    # The inputs come as bytes, we convert them to float32 in range [0,1].\n",
+    "    # (Actually to range [0, 255/256], for compatibility to the version\n",
+    "    # provided at http://deeplearning.net/data/mnist/mnist.pkl.gz.)\n",
+    "    return data\n",
+    "\n",
+    "def load_mnist_labels(filename):\n",
+    "    # Read the labels in Yann LeCun's binary format.\n",
+    "    with gzip.open(filename, 'rb') as f:\n",
+    "        data = np.frombuffer(f.read(), np.uint8, offset=8)\n",
+    "    # The labels are vectors of integers now, that's exactly what we want.\n",
+    "    return data\n",
+    "\n",
+    "# We can now download and read the training and test set images and labels.\n",
+    "X_train = load_mnist_images('train-images-idx3-ubyte.gz')\n",
+    "y_train = load_mnist_labels('train-labels-idx1-ubyte.gz')\n",
+    "X_test = load_mnist_images('t10k-images-idx3-ubyte.gz')\n",
+    "y_test = load_mnist_labels('t10k-labels-idx1-ubyte.gz')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "((60000, 28, 28), (10000, 28, 28))"
+      ]
+     },
+     "execution_count": 8,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "X_train.shape, X_test.shape"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "image/png": "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\nZAUAAAAASUVORK5CYII=\n",
+      "text/plain": [
+       "<matplotlib.figure.Figure at 0x7fb6887244e0>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "plt.figure(figsize=(12,3))\n",
+    "for i in range(10):\n",
+    "    plt.subplot(1, 10, i+1)\n",
+    "    plt.imshow(X_train[i].reshape((28, 28)), cmap='gray', interpolation='nearest')\n",
+    "    plt.axis('off')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "X_train = X_train.reshape((60000, 784))\n",
+    "X_test = X_test.reshape((10000, 784))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "a = np.zeros((y_train.size, 10))\n",
+    "a[np.arange(y_train.size), y_train] = 1\n",
+    "y_train = a"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "a = np.zeros((y_test.size, 10))\n",
+    "a[np.arange(y_test.size), y_test] = 1\n",
+    "y_test = a"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "(60000, 10)"
+      ]
+     },
+     "execution_count": 13,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "y_train.shape"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "NUM_EPOCHS = 100\n",
+    "BATCH_SIZE = 16\n",
+    "N_HIDDEN = 100\n",
+    "SEQ_LEN = 784\n",
+    "TRAIN_SIZE = 60000\n",
+    "TEST_SIZE = 10000"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 128,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "# numerically stable log-softmax with crossentropy\n",
+    "def logsoftmax(x):\n",
+    "    xdev = x-x.max(1,keepdims=True)\n",
+    "    lsm = xdev - T.log(T.sum(T.exp(xdev),axis=1,keepdims=True))\n",
+    "    return lsm\n",
+    "\n",
+    "# cross-entropy\n",
+    "# ys are indices of chars, x is a matrix (? BATCH_SIZE * SEQ_LEN, VOCAB_SIZE)\n",
+    "def lsmCE(x,y):\n",
+    "    return -T.clip(x,-20,0)[T.arange(y.shape[0]), y]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "# Технические вещи\n",
+    "\n",
+    "# Вспомогательная функция для запаковки результата обучения \n",
+    "def pack(network, inp, target, train_err, test_err,\n",
+    "         train_acc, test_acc, train_fn, test_fn, norm):\n",
+    "    return {'network':network,\n",
+    "            'inp':inp,\n",
+    "            'target':target,\n",
+    "            \n",
+    "            'train_err':train_err,\n",
+    "            'test_err':test_err,\n",
+    "            'train_acc':train_acc, \n",
+    "            'test_acc':test_acc, \n",
+    "            'train_fn':train_fn, \n",
+    "            'test_fn':test_fn,\n",
+    "            'norm':norm,\n",
+    "            } "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def init_posdef_w(n):\n",
+    "    # A = 1/N R^T * R, wehere R is standard normal\n",
+    "    # A is positive definite\n",
+    "    # W = (A + I) / max(spec(A + I))\n",
+    "    # spec(W) = {1, l_i < 1}\n",
+    "    \n",
+    "    R = np.random.normal(size=(n, n))\n",
+    "    A = 1 / N_HIDDEN * np.dot(R.T, R)\n",
+    "    eig, _ = np.linalg.eig(A + np.eye(n))\n",
+    "    e = max(eig)\n",
+    "    W = (A + np.eye(n)) / e\n",
+    "    return W"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 57,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def init_normalized(n):\n",
+    "    A = np.random.normal(size=(n, n))\n",
+    "    A = np.triu(A, k = 1) + np.triu(A).T\n",
+    "    eig, _ = np.linalg.eig(A + np.eye(n))\n",
+    "    e = max(eig)\n",
+    "    W = (A + np.eye(n)) / e\n",
+    "    return W"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 89,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def build_network_np(inp):\n",
+    "    # Network from paper \"Improving performance of RNN with ReLU\"\n",
+    "    # W_hh is initialized as pos. def. with max eigenvalue 1\n",
+    "    \n",
+    "    l_in = lasagne.layers.InputLayer(shape=(None, SEQ_LEN, 1), input_var=inp)\n",
+    "\n",
+    "    alpha = np.sqrt(2) * np.exp(1.2 / (max(N_HIDDEN, 6)))\n",
+    "    l_rnn = lasagne.layers.RecurrentLayer(\n",
+    "        l_in, N_HIDDEN,\n",
+    "        W_in_to_hid=lasagne.init.Normal(std=alpha / N_HIDDEN, mean=0.0),\n",
+    "        W_hid_to_hid=init_posdef_w(N_HIDDEN),\n",
+    "        learn_init=True,\n",
+    "        only_return_final=True,\n",
+    "        nonlinearity=lasagne.nonlinearities.rectify)\n",
+    "\n",
+    "    l_out = lasagne.layers.DenseLayer(l_rnn, num_units=10,\n",
+    "                                      W=lasagne.init.GlorotNormal(),\n",
+    "                                      nonlinearity=logsoftmax)\n",
+    "    return l_out"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 90,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def build_network_identity(inp):\n",
+    "    # Network from paper \"Simple way to initialize RNN\",\n",
+    "    # W_hh is initialized as identity matrix\n",
+    "    l_in = lasagne.layers.InputLayer(shape=(None, SEQ_LEN, 1), input_var=inp)\n",
+    "\n",
+    "    l_rnn = lasagne.layers.RecurrentLayer(\n",
+    "        l_in, N_HIDDEN,\n",
+    "        W_in_to_hid=lasagne.init.Normal(1e-3, mean=0.0),\n",
+    "        W_hid_to_hid=np.eye(N_HIDDEN),\n",
+    "        learn_init=True,\n",
+    "        only_return_final=True,\n",
+    "        nonlinearity=lasagne.nonlinearities.rectify)\n",
+    "    \n",
+    "    l_out = lasagne.layers.DenseLayer(l_rnn, num_units=10,\n",
+    "                                      W=lasagne.init.GlorotNormal(),\n",
+    "                                      nonlinearity=logsoftmax)\n",
+    "    return l_out"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 91,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def build_network_gaus(inp):\n",
+    "    # W_hh is initialized from standard normal\n",
+    "    l_in = lasagne.layers.InputLayer(shape=(None, SEQ_LEN, 1), input_var=inp)\n",
+    "\n",
+    "    l_rnn = lasagne.layers.RecurrentLayer(\n",
+    "        l_in, N_HIDDEN,\n",
+    "        W_in_to_hid=lasagne.init.GlorotNormal(),\n",
+    "        W_hid_to_hid=lasagne.init.Normal(),\n",
+    "        learn_init=True,\n",
+    "        only_return_final=True,\n",
+    "        nonlinearity=lasagne.nonlinearities.rectify)\n",
+    "    \n",
+    "    l_out = lasagne.layers.DenseLayer(l_rnn, num_units=10,\n",
+    "                                      W=lasagne.init.GlorotNormal(),\n",
+    "                                      nonlinearity=logsoftmax)\n",
+    "    return l_out"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 92,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def build_network_norm(inp):\n",
+    "    l_in = lasagne.layers.InputLayer(shape=(None, SEQ_LEN, 1), input_var=inp)\n",
+    "\n",
+    "    l_rnn = lasagne.layers.RecurrentLayer(\n",
+    "        l_in, N_HIDDEN,\n",
+    "        W_in_to_hid=lasagne.init.GlorotNormal(),\n",
+    "        W_hid_to_hid=init_normalized(N_HIDDEN),\n",
+    "        learn_init=True,\n",
+    "        only_return_final=True,\n",
+    "        nonlinearity=lasagne.nonlinearities.rectify)\n",
+    "\n",
+    "    l_out = lasagne.layers.DenseLayer(l_rnn, num_units=10,\n",
+    "                                      W=lasagne.init.GlorotNormal(),\n",
+    "                                      nonlinearity=logsoftmax)\n",
+    "    return l_out"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 93,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def build_lstm(inp):\n",
+    "    l_in = lasagne.layers.InputLayer(shape=(None, SEQ_LEN, 1), input_var=inp)\n",
+    "\n",
+    "    l_rnn = lasagne.layers.LSTMLayer(\n",
+    "        l_in, N_HIDDEN,\n",
+    "        forgetgate=lasagne.layers.Gate(b=lasagne.init.Constant(1.)),\n",
+    "        only_return_final=True)\n",
+    "    \n",
+    "    l_out = lasagne.layers.DenseLayer(l_rnn, num_units=10,\n",
+    "                                      W=lasagne.init.GlorotNormal(),\n",
+    "                                      nonlinearity=logsoftmax)\n",
+    "    return l_out"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 129,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "# Create a network with particular initialization for parameters\n",
+    "def create_network(build_fn):\n",
+    "    print(\"Building network ...\")\n",
+    "    inp = T.tensor3('input', dtype='float64')\n",
+    "    # Matrix of size BATCH_SIZE * 10 to match network's output\n",
+    "    target_values = T.ivector('target_output')\n",
+    "    network = build_fn(inp)\n",
+    "    print(\"The network has {} params\".format(lasagne.layers.count_params(network)))\n",
+    "    return (network, inp, target_values)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 102,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "def train_adam(network, inp, target_values, Xtrain, ytrain, Xtest, ytest,\n",
+    "              filename, lr, grad_clip, num_epochs=NUM_EPOCHS):\n",
+    "    num_batches = TRAIN_SIZE // BATCH_SIZE\n",
+    "    train_err=np.zeros(num_epochs)\n",
+    "    train_acc=np.zeros(num_epochs)\n",
+    "    test_err=np.zeros(num_epochs)\n",
+    "    test_acc=np.zeros(num_epochs)\n",
+    "    norm_hist=np.zeros(num_epochs)\n",
+    "    \n",
+    "    network_output = lasagne.layers.get_output(network)\n",
+    "    cr_ent = lsmCE(network_output, target_values).mean()\n",
+    "    acc_score = lasagne.objectives.categorical_accuracy(\n",
+    "        T.exp(network_output), target_values).mean(dtype=theano.config.floatX) * 100\n",
+    "    \n",
+    "    # Retrieve all parameters from the network\n",
+    "    all_params = lasagne.layers.get_all_params(network)\n",
+    "    print(\"Computing updates ...\")\n",
+    "    all_grads = T.grad(cr_ent, all_params)\n",
+    "    scaled_grads, grad_norm = lasagne.updates.total_norm_constraint(all_grads, grad_clip, return_norm=True)\n",
+    "    lr_var = theano.shared(lr)\n",
+    "    updates = lasagne.updates.sgd(scaled_grads, all_params, learning_rate=lr_var)\n",
+    "\n",
+    "    print(\"Compiling functions ...\")    \n",
+    "    train_fn = theano.function([inp, target_values], [cr_ent, acc_score, grad_norm, network_output],\n",
+    "                               updates=updates, allow_input_downcast=True)\n",
+    "    test_fn = theano.function([inp, target_values], [cr_ent, acc_score], allow_input_downcast=True)\n",
+    "    get_output = theano.function([inp], network_output, allow_input_downcast=True)\n",
+    "    \n",
+    "    train_idxs = np.arange(TRAIN_SIZE)\n",
+    "    for epoch in range(num_epochs):\n",
+    "        start_time = time.time()\n",
+    "        for batch in range(num_batches):\n",
+    "            idx = train_idxs[BATCH_SIZE * batch : BATCH_SIZE * (batch + 1)]            \n",
+    "            err, acc, norm, out = train_fn(Xtrain[idx, :, np.newaxis], ytrain[idx])\n",
+    "            if np.isnan(err):\n",
+    "                print(\"Error: crossentropy became nan\")\n",
+    "                np.save(\"AAAAAAAA\", out)\n",
+    "                raise\n",
+    "            elif np.isnan(norm):\n",
+    "                print(err, acc, norm.item())\n",
+    "                print(out)\n",
+    "                print(\"Error: grad norm is nan\")\n",
+    "                np.save(\"BBBBBBBB\", np.array([1, 1, 1]))\n",
+    "                raise\n",
+    "            train_err[epoch] += err\n",
+    "            train_acc[epoch] += acc\n",
+    "            \n",
+    "            if batch == num_batches // 4:\n",
+    "                print(\"25%\", end=\" \")\n",
+    "            if batch == num_batches // 2:\n",
+    "                print(\"50%\", end=\" \")\n",
+    "            if batch == num_batches // 4 * 3:\n",
+    "                print(\"75%\")\n",
+    "            \n",
+    "        train_err[epoch] /= num_batches\n",
+    "        train_acc[epoch] /= num_batches\n",
+    "        \n",
+    "        terr, tacc = test_fn(Xtest[:, :, np.newaxis], ytest)\n",
+    "        test_err[epoch] = terr\n",
+    "        test_acc[epoch] = tacc\n",
+    "        norm_hist[epoch] = norm.item()\n",
+    "        \n",
+    "        print(\"Epoch {} loss / acc test = {:.4f}, {:.4f} \\t\"\n",
+    "              \"train = {:.4f}, {:.4f} norm = {:.4f} \\t time = {:.2f}s\".\n",
+    "              format(epoch, test_err[epoch], test_acc[epoch], \n",
+    "                     train_err[epoch], train_acc[epoch], norm.item(), time.time() - start_time), end=\"\\t\")\n",
+    "    \n",
+    "    np.save(file=filename, arr=lasagne.layers.get_all_param_values(network))\n",
+    "    return pack(network, inp, target_values, train_err, test_err, train_acc, test_acc, train_fn, test_fn, norm_hist)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 135,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def train_adam(network, inp, target_values, Xtrain, ytrain, Xtest, ytest,\n",
+    "              filename, lr, grad_clip, num_epochs=NUM_EPOCHS):\n",
+    "    num_batches = TRAIN_SIZE // BATCH_SIZE\n",
+    "    train_err=np.zeros(num_epochs)\n",
+    "    train_acc=np.zeros(num_epochs)\n",
+    "    test_err=np.zeros(num_epochs)\n",
+    "    test_acc=np.zeros(num_epochs)\n",
+    "    norm_hist=np.zeros(num_epochs)\n",
+    "    \n",
+    "    network_output = lasagne.layers.get_output(network)\n",
+    "    cr_ent = lsmCE(network_output, target_values).mean()\n",
+    "    acc_score = lasagne.objectives.categorical_accuracy(\n",
+    "        T.exp(network_output), target_values).mean(dtype=theano.config.floatX) * 100\n",
+    "    \n",
+    "    # Retrieve all parameters from the network\n",
+    "    all_params = lasagne.layers.get_all_params(network)\n",
+    "    print(\"Computing updates ...\")\n",
+    "    all_grads = T.grad(cr_ent, all_params)\n",
+    "    scaled_grads, grad_norm = lasagne.updates.total_norm_constraint(all_grads, grad_clip, return_norm=True)\n",
+    "    lr_var = theano.shared(lr)\n",
+    "    updates = lasagne.updates.adam(scaled_grads, all_params, learning_rate=lr_var)\n",
+    "\n",
+    "    print(\"Compiling functions ...\")    \n",
+    "    train_fn = theano.function([inp, target_values], [cr_ent, acc_score, grad_norm, network_output],\n",
+    "                               updates=updates, allow_input_downcast=True)\n",
+    "    test_fn = theano.function([inp, target_values], [cr_ent, acc_score], allow_input_downcast=True)\n",
+    "    get_output = theano.function([inp], network_output, allow_input_downcast=True)\n",
+    "    \n",
+    "    train_idxs = np.arange(TRAIN_SIZE)\n",
+    "    for epoch in range(num_epochs):\n",
+    "        start_time = time.time()\n",
+    "        for batch in range(num_batches):\n",
+    "            idx = train_idxs[BATCH_SIZE * batch : BATCH_SIZE * (batch + 1)]            \n",
+    "            err, acc, norm, out = train_fn(Xtrain[idx, :, np.newaxis], ytrain[idx])\n",
+    "            if np.isnan(err):\n",
+    "                print(\"Error: crossentropy became nan\")\n",
+    "                np.save(\"AAAAAAAA\", out)\n",
+    "                raise\n",
+    "            elif np.isnan(norm):\n",
+    "                print(err, acc, norm.item())\n",
+    "                print(out)\n",
+    "                print(\"Error: grad norm is nan\")\n",
+    "                np.save(\"BBBBBBBB\", np.array([1, 1, 1]))\n",
+    "                raise\n",
+    "            train_err[epoch] += err\n",
+    "            train_acc[epoch] += acc\n",
+    "            \n",
+    "            if batch == num_batches // 4:\n",
+    "                print(\"25%\", end=\" \")\n",
+    "            if batch == num_batches // 2:\n",
+    "                print(\"50%\", end=\" \")\n",
+    "            if batch == num_batches // 4 * 3:\n",
+    "                print(\"75%\")\n",
+    "            \n",
+    "        train_err[epoch] /= num_batches\n",
+    "        train_acc[epoch] /= num_batches\n",
+    "        \n",
+    "        terr, tacc = test_fn(Xtest[:, :, np.newaxis], ytest)\n",
+    "        test_err[epoch] = terr\n",
+    "        test_acc[epoch] = tacc\n",
+    "        norm_hist[epoch] = norm.item()\n",
+    "        \n",
+    "        print(\"Epoch {} loss / acc test = {:.4f}, {:.4f} \\t\"\n",
+    "              \"train = {:.4f}, {:.4f} norm = {:.4f} \\t time = {:.2f}s\".\n",
+    "              format(epoch, test_err[epoch], test_acc[epoch], \n",
+    "                     train_err[epoch], train_acc[epoch], norm.item(), time.time() - start_time), end=\"\\t\")\n",
+    "    \n",
+    "    np.save(file=filename, arr=lasagne.layers.get_all_param_values(network))\n",
+    "    return pack(network, inp, target_values, train_err, test_err, train_acc, test_acc, train_fn, test_fn, norm_hist)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false,
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Building network ...\n",
+      "The network has 11310 params\n",
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "net, inp, tar = create_network(build_network_np)\n",
+    "nprnn1 = train_sgd(net, inp, tar, X_train, y_train, X_test, y_test, \"nprnn1\", 1e-4, num_epochs=10)\n",
+    "np.save(\"acc1\", nprnn1[\"test_acc\"])\n",
+    "np.save(\"err1\", nprnn1[\"test_err\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "nprnn1 = train_sgd(nprnn1[\"network\"], nprnn1[\"inp\"], nprnn1[\"target\"],\n",
+    "                X_train, y_train, X_test, y_test, \"nprnn1\", 1e-4, num_epochs=23)\n",
+    "np.save(\"acc2\", nprnn1[\"test_acc\"])\n",
+    "np.save(\"err2\", nprnn1[\"test_err\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "# COOL DOWN LEARNING RATE AFTER 30 EPOCHS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "# net, inp, tar = create_network(build_network_np)\n",
+    "# weights = np.load(\"nprnn1.npy\")\n",
+    "# lasagne.layers.set_all_param_values(net, weights)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Computing updates ...\n",
+      "Compiling functions ...\n",
+      "25% 50% 75%\n",
+      "Epoch 0 loss / acc test = 2.2970, 12.1000 \ttrain = 2.2963, 12.2983 norm = 0.3282 \t time = 544.89s\t25% 50% 75%\n",
+      "Epoch 1 loss / acc test = 2.2968, 12.1000 \ttrain = 2.2961, 12.3083 norm = 0.3289 \t time = 558.65s\t25% 50% 75%\n",
+      "Epoch 2 loss / acc test = 2.2967, 12.1000 \ttrain = 2.2959, 12.3133 norm = 0.3297 \t time = 562.69s\t25% 50% 75%\n",
+      "Epoch 3 loss / acc test = 2.2965, 12.1000 \ttrain = 2.2956, 12.3233 norm = 0.3305 \t time = 557.25s\t25% 50% 75%\n",
+      "Epoch 4 loss / acc test = 2.2963, 12.1000 \ttrain = 2.2954, 12.3300 norm = 0.3313 \t time = 559.49s\t25% 50% 75%\n",
+      "Epoch 5 loss / acc test = 2.2961, 12.1100 \ttrain = 2.2951, 12.3317 norm = 0.3345 \t time = 563.65s\t25% 50% 75%\n",
+      "Epoch 6 loss / acc test = 2.2959, 12.1200 \ttrain = 2.2948, 12.3333 norm = 0.3355 \t time = 557.41s\t25% 50% 75%\n",
+      "Epoch 7 loss / acc test = 2.2956, 12.1200 \ttrain = 2.2945, 12.3367 norm = 0.3365 \t time = 557.89s\t25% 50% 75%\n",
+      "Epoch 8 loss / acc test = 2.2954, 12.1200 \ttrain = 2.2942, 12.3383 norm = 0.3376 \t time = 562.76s\t25% 50% 75%\n",
+      "Epoch 9 loss / acc test = 2.2951, 12.1300 \ttrain = 2.2939, 12.3417 norm = 0.3388 \t time = 562.46s\t25% 50% 75%\n",
+      "Epoch 10 loss / acc test = 2.2948, 12.1300 \ttrain = 2.2935, 12.3433 norm = 0.3401 \t time = 559.92s\t25% 50% 75%\n",
+      "Epoch 11 loss / acc test = 2.2945, 12.1300 \ttrain = 2.2931, 12.3467 norm = 0.3415 \t time = 566.43s\t25% 50% "
+     ]
+    }
+   ],
+   "source": [
+    "nprnn1 = train_sgd(nprnn1[\"network\"], nprnn1[\"inp\"], nprnn1[\"target\"],\n",
+    "                   X_train, y_train, X_test, y_test, \"nprnn1\", 1e-5, num_epochs=33)\n",
+    "np.save(\"acc3\", nprnn1[\"test_acc\"])\n",
+    "np.save(\"err3\", nprnn1[\"test_err\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "nprnn1 = train_sgd(nprnn1[\"network\"], nprnn1[\"inp\"], nprnn1[\"target\"],\n",
+    "                   X_train, y_train, X_test, y_test, \"nprnn1\", 1e-6, num_epochs=33)\n",
+    "np.save(\"acc4\", nprnn1[\"test_acc\"])\n",
+    "np.save(\"err4\", nprnn1[\"test_err\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 46,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([ 20.68,  20.68,  20.69,  20.69,  20.68,  20.69,  20.69,  20.69,\n",
+       "        20.69,  20.69,  20.69,  20.71,  20.71,  20.73,  20.73,  20.75,\n",
+       "        20.74,  20.75,  20.78,  20.79,  20.81,  20.8 ,  20.84,  20.84,\n",
+       "        20.84,  20.85,  20.87,  20.87,  20.91,  20.92,  20.91,  20.9 ,\n",
+       "        20.91])"
+      ]
+     },
+     "execution_count": 46,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "np.load(\"acc4.npy\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "collapsed": true
+   },
+   "source": [
+    "## IRNN"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Building network ...\n",
+      "The network has 11310 params\n",
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "net, inp, tar = create_network(build_network_identity)\n",
+    "irnn1 = train_sgd(net, inp, tar, X_train, y_train, X_test, y_test, \"irnn/irnn1\", 1e-8, num_epochs=10)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 90,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "np.save(\"irnn/irnn-acc1\", irnn1[\"test_acc\"])\n",
+    "np.save(\"irnn/irnn-err1\", irnn1[\"test_err\"])\n",
+    "np.save(\"irnn/irnn-norm1\", irnn1[\"norm\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 95,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([  7.42,   8.12,   7.28,  10.03,   9.92,   9.74,  11.33,  13.4 ,\n",
+       "        13.12,  12.91])"
+      ]
+     },
+     "execution_count": 95,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "np.load(\"irnn/irnn-acc1.npy\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "irnn1 = train_sgd(irnn1[\"network\"], irnn1[\"inp\"], irnn1[\"target\"],\n",
+    "                  X_train, y_train, X_test, y_test, \"irnn/irnn1\", 1e-8, num_epochs=20)\n",
+    "np.save(\"irnn/irnn-acc2\", irnn1[\"test_acc\"])\n",
+    "np.save(\"irnn/irnn-err2\", irnn1[\"test_err\"])\n",
+    "np.save(\"irnn/irnn-norm2\", irnn1[\"norm\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 97,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([ 12.78,  12.91,  12.94,  13.21,  14.17,  15.01,  15.22,  15.31,\n",
+       "        15.3 ,  15.33,  15.37,  15.39,  15.39,  15.4 ,  15.44,  15.54,\n",
+       "        15.69,  15.84,  15.96,  16.08])"
+      ]
+     },
+     "execution_count": 97,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "np.load(\"irnn/irnn-acc2.npy\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "irnn1 = train_sgd(irnn1[\"network\"], irnn1[\"inp\"], irnn1[\"target\"],\n",
+    "                  X_train, y_train, X_test, y_test, \"irnn/irnn1\", 1e-8, num_epochs=30)\n",
+    "np.save(\"irnn/irnn-acc3\", irnn1[\"test_acc\"])\n",
+    "np.save(\"irnn/irnn-err3\", irnn1[\"test_err\"])\n",
+    "np.save(\"irnn/irnn-norm3\", irnn1[\"norm\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "irnn1 = train_sgd(irnn1[\"network\"], irnn1[\"inp\"], irnn1[\"target\"],\n",
+    "                  X_train, y_train, X_test, y_test, \"irnn/irnn1\", 1e-8, num_epochs=20)\n",
+    "np.save(\"irnn/irnn-acc4\", irnn1[\"test_acc\"])\n",
+    "np.save(\"irnn/irnn-err4\", irnn1[\"test_err\"])\n",
+    "np.save(\"irnn/irnn-norm4\", irnn1[\"norm\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 104,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([ 16.24,  16.38,  16.51,  16.63,  16.8 ,  16.9 ,  17.17,  17.31,\n",
+       "        17.41,  17.62,  17.81,  17.89,  17.93,  18.08,  18.2 ,  18.25,\n",
+       "        18.24,  18.13,  18.14,  18.14,  18.11,  18.12,  18.12,  18.12,\n",
+       "        18.06,  18.09,  18.04,  18.02,  17.95,  17.95])"
+      ]
+     },
+     "execution_count": 104,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "np.load(\"irnn/irnn-acc3.npy\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 103,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([ 17.98,  17.96,  17.9 ,  17.86,  17.9 ,  17.91,  17.87,  17.87,\n",
+       "        17.85,  17.88,  17.88,  17.9 ,  17.88,  17.88,  17.87,  17.92,\n",
+       "        17.93,  17.96,  17.97,  17.96])"
+      ]
+     },
+     "execution_count": 103,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "np.load(\"irnn/irnn-acc4.npy\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "irnn1 = train_sgd(irnn1[\"network\"], irnn1[\"inp\"], irnn1[\"target\"],\n",
+    "                  X_train, y_train, X_test, y_test, \"irnn/irnn1\", 1e-8, num_epochs=20)\n",
+    "np.save(\"irnn/irnn-acc5\", irnn1[\"test_acc\"])\n",
+    "np.save(\"irnn/irnn-err5\", irnn1[\"test_err\"])\n",
+    "np.save(\"irnn/irnn-norm5\", irnn1[\"norm\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 107,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([ 17.94,  17.98,  17.99,  18.01,  18.03,  18.05,  18.04,  18.05,\n",
+       "        18.12,  18.12,  18.11,  18.13,  18.14,  18.17,  18.2 ,  18.24,\n",
+       "        18.29,  18.29,  18.28,  18.29])"
+      ]
+     },
+     "execution_count": 107,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "np.load(\"irnn/irnn-acc5.npy\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## LSTM"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Building network ...\n",
+      "The network has 42310 params\n",
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "net, inp, tar = create_network(build_lstm)\n",
+    "lstm = train_sgd(net, inp, tar, X_train, y_train, X_test, y_test, \"lstm/lstm1\", 1e-2, 1, num_epochs=10)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "ename": "NameError",
+     "evalue": "name 'lstm' is not defined",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[1;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[1;31mNameError\u001b[0m                                 Traceback (most recent call last)",
+      "\u001b[1;32m<ipython-input-4-c41288a1bc80>\u001b[0m in \u001b[0;36m<module>\u001b[1;34m()\u001b[0m\n\u001b[1;32m----> 1\u001b[1;33m \u001b[0mlstm\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[1;31mNameError\u001b[0m: name 'lstm' is not defined"
+     ]
+    }
+   ],
+   "source": [
+    "np.save(\"lstm/lstm-acc1\", lstm[\"test_acc\"])\n",
+    "np.save(\"lstm/lstm-err1\", lstm[\"test_err\"])\n",
+    "np.save(\"lstm/lstm-norm1\", lstm[\"norm\"])"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "collapsed": true
+   },
+   "source": [
+    "кернел всё время умирает :("
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## nRNN"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 59,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Building network ...\n",
+      "The network has 11310 params\n"
+     ]
+    }
+   ],
+   "source": [
+    "net, inp, tar = create_network(build_network_norm)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 60,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Computing updates ...\n",
+      "Compiling functions ...\n",
+      "25% 50% 75%\n",
+      "Epoch 0 loss / acc test = 2.3008, 12.1100 \ttrain = 2.3010, 11.5000 norm = 0.2411 \t time = 553.16s\t25% 50% 75%\n",
+      "Epoch 1 loss / acc test = 2.2997, 12.1300 \ttrain = 2.2999, 12.3500 norm = 0.2498 \t time = 568.38s\t25% 50% 75%\n",
+      "Epoch 2 loss / acc test = 2.2981, 12.1300 \ttrain = 2.2983, 12.3583 norm = 0.2555 \t time = 554.18s\t25% 50% 75%\n",
+      "Epoch 3 loss / acc test = 2.2954, 12.1300 \ttrain = 2.2957, 12.3600 norm = 0.2601 \t time = 554.17s\t25% 50% 75%\n",
+      "Epoch 4 loss / acc test = 2.2902, 12.7200 \ttrain = 2.2903, 12.4083 norm = 0.2949 \t time = 570.95s\t25% 50% 75%\n",
+      "Epoch 5 loss / acc test = 2.2125, 19.7500 \ttrain = 2.2692, 16.9233 norm = 3.3974 \t time = 559.90s\t25% 50% 75%\n",
+      "Epoch 6 loss / acc test = 2.1204, 20.1500 \ttrain = 2.1359, 20.1450 norm = 9.1876 \t time = 561.41s\t25% 50% 75%\n",
+      "Epoch 7 loss / acc test = 2.1058, 19.9700 \ttrain = 2.1021, 20.8750 norm = 11.3619 \t time = 562.18s\t25% 50% 75%\n",
+      "Epoch 8 loss / acc test = 2.0925, 19.4300 \ttrain = 2.0875, 21.2767 norm = 12.5960 \t time = 559.69s\t25% 50% 75%\n",
+      "Epoch 9 loss / acc test = 2.0780, 19.0000 \ttrain = 2.0726, 21.2250 norm = 12.8876 \t time = 555.80s\t"
+     ]
+    }
+   ],
+   "source": [
+    "norm_rnn = train_sgd(net, inp, tar, X_train, y_train, X_test, y_test, \"nrnn/nrnn1\", 1e-4, 10, num_epochs=10)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 62,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "np.save(\"nrnn/nrnn-acc1\", norm_rnn[\"test_acc\"])\n",
+    "np.save(\"nrnn/nrnn-err1\", norm_rnn[\"test_err\"])\n",
+    "np.save(\"nrnn/nrnn-norm1\", norm_rnn[\"norm\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "norm_rnn = train_sgd(norm_rnn[\"network\"], norm_rnn[\"inp\"], norm_rnn[\"target\"],\n",
+    "                     X_train, y_train, X_test, y_test, \"nrnn/nrnn1\", 1e-4, 10, num_epochs=20)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 65,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "np.save(\"nrnn/nrnn-acc2\", norm_rnn[\"test_acc\"])\n",
+    "np.save(\"nrnn/nrnn-err2\", norm_rnn[\"test_err\"])\n",
+    "np.save(\"nrnn/nrnn-norm2\", norm_rnn[\"norm\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "norm_rnn = train_sgd(norm_rnn[\"network\"], norm_rnn[\"inp\"], norm_rnn[\"target\"],\n",
+    "                     X_train, y_train, X_test, y_test, \"nrnn/nrnn1\", 1e-5, 10, num_epochs=30)\n",
+    "np.save(\"nrnn/nrnn-acc3\", norm_rnn[\"test_acc\"])\n",
+    "np.save(\"nrnn/nrnn-err3\", norm_rnn[\"test_err\"])\n",
+    "np.save(\"nrnn/nrnn-norm3\", norm_rnn[\"norm\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Computing updates ...\n",
+      "Compiling functions ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "norm_rnn = train_sgd(norm_rnn[\"network\"], norm_rnn[\"inp\"], norm_rnn[\"target\"],\n",
+    "                     X_train, y_train, X_test, y_test, \"nrnn/nrnn1\", 1e-6, 10, num_epochs=40)\n",
+    "np.save(\"nrnn/nrnn-acc4\", norm_rnn[\"test_acc\"])\n",
+    "np.save(\"nrnn/nrnn-err4\", norm_rnn[\"test_err\"])\n",
+    "np.save(\"nrnn/nrnn-norm4\", norm_rnn[\"norm\"])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 78,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([ 33.99,  33.93,  33.94,  33.86,  33.95,  34.  ,  33.95,  33.92,\n",
+       "        33.92,  33.9 ,  33.89,  33.86,  33.86,  33.86,  33.86,  33.85,\n",
+       "        33.85,  33.88,  33.88,  33.85,  33.87,  34.16,  34.33,  34.41,\n",
+       "        34.61,  34.65,  34.78,  34.81,  34.88,  34.96])"
+      ]
+     },
+     "execution_count": 78,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "np.load(\"nrnn/nrnn-acc3.npy\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Train with Adam"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 121,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([5, 0, 4, ..., 5, 6, 8])"
+      ]
+     },
+     "execution_count": 121,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "y_train_"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 120,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "y_train_ = np.zeros((y_train.shape[0]), dtype=np.int)\n",
+    "y_test_ = np.zeros((y_test.shape[0]), dtype=np.int)\n",
+    "for i in range(y_train.shape[0]):\n",
+    "    y_train_[i] = np.where(y_train[i] == 1)[0][0]\n",
+    "for i in range(y_test.shape[0]):\n",
+    "    y_test_[i] = np.where(y_test[i] == 1)[0][0]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false,
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Building network ...\n",
+      "The network has 11310 params\n",
+      "Computing updates ...\n",
+      "Compiling functions ...\n",
+      "25% "
+     ]
+    }
+   ],
+   "source": [
+    "net, inp, tar = create_network(build_network_norm)\n",
+    "norm_rnn = train_adam(net, inp, tar, X_train, y_train_, X_test, y_test_, \"nrnn/nrnn1\", 1e-3, 10, num_epochs=100)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "anaconda-cloud": {},
+  "kernelspec": {
+   "display_name": "Python [Root]",
+   "language": "python",
+   "name": "Python [Root]"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.5.2"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 0
+}
